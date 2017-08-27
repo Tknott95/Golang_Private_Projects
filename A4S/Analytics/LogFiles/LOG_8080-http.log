@@ -1,0 +1,13 @@
+ - req hit - 2017/08/27 07:59:13 logger.go:33: 125.036µs
+ - req hit - 2017/08/27 07:59:13 logger.go:33: 31.396µs
+ - req hit - 2017/08/27 08:04:05 logger.go:33: 184.211µs
+ - req hit - 2017/08/27 08:04:05 logger.go:33: 52.219µs
+ - req hit - 2017/08/27 08:04:05 logger.go:33: 14.275µs
+ - req hit - 2017/08/27 08:04:06 logger.go:33: 40.376µs
+ - req hit - 2017/08/27 08:04:06 logger.go:33: 12.575µs
+ - req hit - 2017/08/27 08:04:11 logger.go:33: 16.218µs
+ - req hit - 2017/08/27 08:04:11 logger.go:33: 11.574µs
+ - req hit - 2017/08/27 08:06:40 logger.go:33: 124.904µs
+ - req hit - 2017/08/27 08:06:41 logger.go:33: 16.531µs
+ - req hit - 2017/08/27 08:07:22 logger.go:33: 163.163µs
+ - req hit - 2017/08/27 08:07:22 logger.go:33: 16.884µs

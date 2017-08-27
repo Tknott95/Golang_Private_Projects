@@ -1,129 +1,168 @@
 package users
 
 import (
+	"crypto/rsa"
 	"errors"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"strings"
 	"time"
 
-	"github.com/boltdb/bolt"
-	"golang.org/x/crypto/bcrypt"
+	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go/request"
+	"github.com/gorilla/context"
 )
 
+// AppClaims provides custom claim for JWT
+type AppClaims struct {
+	UserName string `json:"username"`
+	Role     string `json:"role"`
+	jwt.StandardClaims
+}
+
+// using asymmetric crypto/RSA keys
+// location of private/public key files
+const (
+	// openssl genrsa -out app.rsa 1024
+	privKeyPath = "keys/tm.rsa"
+	// openssl rsa -in app.rsa -pubout > app.rsa.pub
+	pubKeyPath = "keys/tm.rsa.pub"
+)
+
+// Private key for signing and public key for verification
 var (
-	// DB is the reference to our DB, which contains our user data.
-	DB = newDB()
-
-	// ErrUserAlreadyExists is the error thrown when a user attempts to create
-	// a new user in the DB with a duplicate username.
-	ErrUserAlreadyExists = errors.New("users: username already exists")
-
-	// ErrUserNotFound is the error thrown when a user can't be found in the
-	// database.
-	ErrUserNotFound = errors.New("users: user not found")
+	//verifyKey, signKey []byte
+	verifyKey *rsa.PublicKey
+	signKey   *rsa.PrivateKey
 )
 
-// Store is a reference to our BoltDB instance that contains two seperate
-// internal stores: a user store, and a session store.
-type Store struct {
-	DB       *bolt.DB
-	Users    string
-	Sessions string
-}
+// Read the key files before starting http handlers
+func InitKeys() {
 
-// newDB is a convenience method to initalize our DB.
-func newDB() *Store {
-	// Create or open the database
-	db, err := bolt.Open("users.db", 0600, &bolt.Options{
-		Timeout: 1 * time.Second,
-	})
+	signBytes, err := ioutil.ReadFile(privKeyPath)
 	if err != nil {
-		panic(err)
+		log.Fatalf("[initKeys]: %s\n", err)
 	}
 
-	// Create the Users bucket
-	db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte("Users"))
-		if err != nil {
-			return err
+	signKey, err = jwt.ParseRSAPrivateKeyFromPEM(signBytes)
+	if err != nil {
+		log.Fatalf("[initKeys]: %s\n", err)
+	}
+
+	verifyBytes, err := ioutil.ReadFile(pubKeyPath)
+	if err != nil {
+		log.Fatalf("[initKeys]: %s\n", err)
+	}
+
+	verifyKey, err = jwt.ParseRSAPublicKeyFromPEM(verifyBytes)
+	if err != nil {
+		log.Fatalf("[initKeys]: %s\n", err)
+	}
+}
+
+// init bootstrapps the application
+// func init() {
+// 	// // Initialize AppConfig variable
+// 	// initConfig()
+// 	// Initialize private/public keys for JWT authentication
+// 	initKeys()
+// 	// // Initialize Logger objects with Log Level
+// 	// setLogLevel(Level(AppConfig.LogLevel))
+// 	// // Start a MongoDB session
+// 	// createDbSession()
+// 	// // Add indexes into MongoDB
+// 	// addIndexes()
+// }
+
+// GenerateJWT generates a new JWT token
+func GenerateJWT(name, role string) (string, error) {
+	// Create the Claims
+	claims := AppClaims{
+		name,
+		role,
+		jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(time.Minute * 20).Unix(),
+			Issuer:    "admin",
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+
+	ss, err := token.SignedString(signKey)
+	if err != nil {
+		return "", err
+	}
+
+	return ss, nil
+}
+
+// Authorize Middleware for validating JWT tokens
+func Authorize(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+
+	// Get token from request
+	token, err := request.ParseFromRequestWithClaims(r, request.OAuth2Extractor, &AppClaims{}, func(token *jwt.Token) (interface{}, error) {
+		// since we only use the one private key to sign the tokens,
+		// we also only use its public counter part to verify
+		return verifyKey, nil
+	})
+
+	if err != nil {
+		switch err.(type) {
+
+		case *jwt.ValidationError: // JWT validation error
+			vErr := err.(*jwt.ValidationError)
+
+			switch vErr.Errors {
+			case jwt.ValidationErrorExpired: //JWT expired
+				DisplayAppError(
+					w,
+					err,
+					"Access Token is expired, get a new Token",
+					401,
+				)
+				return
+
+			default:
+				DisplayAppError(w,
+					err,
+					"Error while parsing the Access Token!",
+					500,
+				)
+				return
+			}
+
+		default:
+			DisplayAppError(w,
+				err,
+				"Error while parsing Access Token!",
+				500)
+			return
 		}
-		return nil
-	})
 
-	// Create the Sessions bucket
-	db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte("Sessions"))
-		if err != nil {
-			return err
+	}
+	if token.Valid {
+		// Set user name to HTTP context
+		context.Set(r, "user", token.Claims.(*AppClaims).UserName)
+		next(w, r)
+	} else {
+		DisplayAppError(
+			w,
+			err,
+			"Invalid Access Token",
+			401,
+		)
+	}
+}
+
+// TokenFromAuthHeader is a "TokenExtractor" that takes a given request and extracts
+// the JWT token from the Authorization header.
+func TokenFromAuthHeader(r *http.Request) (string, error) {
+	// Look for an Authorization header
+	if ah := r.Header.Get("Authorization"); ah != "" {
+		// Should be a bearer token
+		if len(ah) > 6 && strings.ToUpper(ah[0:6]) == "BEARER" {
+			return ah[7:], nil
 		}
-		return nil
-	})
-
-	return &Store{
-		DB:       db,
-		Users:    "Users",
-		Sessions: "Sessions",
 	}
-}
-
-// NewUser accepts a username and password and creates a new user in our DB
-// from it.
-func NewUser(username string, password string) error {
-	err := exists(username)
-	if err != nil {
-		return err
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	return DB.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(DB.Users))
-		return b.Put([]byte(username), hashedPassword)
-	})
-}
-
-// AuthenticateUser accepts a username and password, and checks that the given
-// password matches the hashed password. It returns nil on success, and an
-// error on failure.
-func AuthenticateUser(username string, password string) error {
-	var hashedPassword []byte
-	DB.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(DB.Users))
-		hashedPassword = b.Get([]byte(username))
-		return nil
-	})
-	if hashedPassword == nil {
-		return ErrUserNotFound
-	}
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
-}
-
-// OverrideOldPassword overrides the old password with the new password. For
-// use when resetting passwords.
-func OverrideOldPassword(username string, password string) error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	return DB.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(DB.Users))
-		return b.Put([]byte(username), hashedPassword)
-	})
-}
-
-// exists is an internal utility function for ensuring the usernames are
-// unique.
-func exists(username string) error {
-	var result []byte
-	DB.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(DB.Users))
-		result = b.Get([]byte(username))
-		return nil
-	})
-	if result != nil {
-		return ErrUserAlreadyExists
-	}
-	return nil
+	return "", errors.New("No token in the HTTP request")
 }
