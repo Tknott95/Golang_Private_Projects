@@ -11,6 +11,13 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+type MyCustomClaims struct {
+	Sub string `json:"name`
+	Exp int64  `json:"exp"`
+	Iat int64  `json:"iat"`
+	jwt.StandardClaims
+}
+
 var (
 	identityURL = "https://www.googleapis.com/oauth2/v2/userinfo"
 	provider    = New()
@@ -63,10 +70,21 @@ func CallbackURLHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func genToken(w http.ResponseWriter, user string) {
-	token := jwt.New(jwt.SigningMethodHS256)
-	token.Claims["sub"] = user
-	token.Claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
-	token.Claims["iat"] = time.Now().Unix()
+	sub := user
+	exp := time.Now().Add(time.Hour * 72).Unix()
+	iat := time.Now().Unix()
+
+	claims := MyCustomClaims{
+		sub,
+		exp,
+		iat,
+		jwt.StandardClaims{
+			ExpiresAt: 15000,
+			Issuer:    "test",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	tokenString, err := token.SignedString(signingKey)
 	if err != nil {
