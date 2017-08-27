@@ -1,2 +1,2 @@
 #!/bin/bash
- go tool trace Analytics/trace.out
+ go tool trace Analytics/TracerFiles/trace.out

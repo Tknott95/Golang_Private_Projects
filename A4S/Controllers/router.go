@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	analytics "github.com/tknott95/Private_Go_Projects/Concurrency4Go/Controllers/analyticsCtrl"
-	users "github.com/tknott95/Private_Go_Projects/Concurrency4Go/Controllers/usersCtrl"
-	hub "github.com/tknott95/Private_Go_Projects/Concurrency4Go/Controllers/websocketCtrl"
+	analytics "github.com/tknott95/Private_Go_Projects/A4S/Controllers/analyticsCtrl"
+	users "github.com/tknott95/Private_Go_Projects/A4S/Controllers/usersCtrl"
+	hub "github.com/tknott95/Private_Go_Projects/A4S/Controllers/websocketCtrl"
 )
 
 const loginTemplate = `

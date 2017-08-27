@@ -1,7 +1,7 @@
 package hub
 
 import (
-	analytics "github.com/tknott95/Private_Go_Projects/Concurrency4Go/Controllers/analyticsCtrl"
+	analytics "github.com/tknott95/Private_Go_Projects/A4S/Controllers/analyticsCtrl"
 )
 
 var socketMsgLogger = analytics.CreateLogger("socketmsg", "New Socket Msg Made")
