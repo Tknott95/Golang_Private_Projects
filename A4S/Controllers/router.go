@@ -7,7 +7,7 @@ import (
 	"time"
 
 	analytics "github.com/tknott95/Private_Go_Projects/A4S/Controllers/analyticsCtrl"
-	users "github.com/tknott95/Private_Go_Projects/A4S/Controllers/usersCtrl"
+	auth "github.com/tknott95/Private_Go_Projects/A4S/Controllers/authCtrl"
 	hub "github.com/tknott95/Private_Go_Projects/A4S/Controllers/websocketCtrl"
 )
 
@@ -19,8 +19,8 @@ func InitServer() {
 	analytics.MonitorTracer()
 	go hub.DefaultHub.Start()
 
-	users.InitKeys()
-	log.Println(users.GenerateJWT("tk", "tk"))
+	auth.InitKeys()
+	log.Println(auth.GenerateJWT("tk", "tk"))
 
 	log.Println(`Server taken off and running on port 8080 🚀`)
 
